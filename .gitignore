@@ -1,0 +1,45 @@
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+__pycache__
+
+# next.js
+/.next
+/out
+
+# build
+/build
+/dist
+
+# env files
+.env
+.env.*
+!.env.example
+
+# typescript
+next-env.d.ts
+*.tsbuildinfo
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE / editors
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# testing
+/coverage
+
+# vercel
+.vercel
+
+# misc
+Thumbs.db

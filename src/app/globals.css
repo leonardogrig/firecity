@@ -1,0 +1,168 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: monospace;
+  background: #0a0a1a;
+  color: #e0e0e0;
+}
+
+/* Landing page */
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 24px;
+}
+
+.landing h1 {
+  font-size: 48px;
+  color: #fff;
+  letter-spacing: 4px;
+}
+
+.landing p {
+  color: #888;
+  font-size: 14px;
+  max-width: 400px;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.landing form {
+  display: flex;
+  gap: 8px;
+}
+
+.landing input {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 12px 16px;
+  font-family: monospace;
+  font-size: 16px;
+  border-radius: 4px;
+  outline: none;
+  width: 280px;
+}
+
+.landing input:focus {
+  border-color: #5588ff;
+}
+
+.landing button {
+  background: #5588ff;
+  color: #fff;
+  border: none;
+  padding: 12px 24px;
+  font-family: monospace;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.landing button:hover {
+  background: #6699ff;
+}
+
+/* API key section */
+.api-key-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.api-key-input {
+  background: #12121e;
+  border: 1px solid #252530;
+  color: #888;
+  padding: 8px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  border-radius: 4px;
+  outline: none;
+  width: 300px;
+  text-align: center;
+}
+
+.api-key-input:focus {
+  border-color: #444;
+  color: #ccc;
+}
+
+.api-key-hint {
+  color: #444;
+  font-size: 11px;
+}
+
+/* City page */
+.city-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.city-header {
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #1a1a2e;
+  background: #0a0a1acc;
+  backdrop-filter: blur(8px);
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.city-header h1 {
+  font-size: 20px;
+  color: #fff;
+}
+
+.city-header a {
+  color: #5588ff;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.city-header a:hover {
+  text-decoration: underline;
+}
+
+.city-stats {
+  color: #666;
+  font-size: 12px;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  gap: 16px;
+  color: #888;
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  gap: 16px;
+  color: #ff6666;
+}
