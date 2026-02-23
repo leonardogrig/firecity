@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCached, setCached, checkRateLimit } from "@/lib/cache";
 
 interface Repo {
   repo_name: string;
@@ -36,6 +37,9 @@ interface FirecrawlBatchStatusResponse {
 
 const REPOS_PER_PAGE = 30; // GitHub shows 30 repos per org page
 
+// GitHub org names: alphanumeric + hyphens, no leading/trailing hyphen, max 39 chars
+const GITHUB_ORG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+
 const SCRAPE_FORMATS = [
   {
     type: "json" as const,
@@ -68,6 +72,13 @@ export async function GET(
 ) {
   const { org } = await params;
 
+  if (!GITHUB_ORG_RE.test(org)) {
+    return NextResponse.json(
+      { error: "Invalid organization name. GitHub names can only contain letters, numbers, and hyphens." },
+      { status: 400 }
+    );
+  }
+
   // User-provided key (via header) takes priority over the env key
   const userKey = request.headers.get("x-firecrawl-key");
   const apiKey = userKey || process.env.FIRECRAWL_API_KEY;
@@ -83,6 +94,31 @@ export async function GET(
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
+
+  // Check Redis cache first — cache hits are free and don't count toward the limit
+  const cached = await getCached<{ org: string; total: number; repos: Repo[] }>(org);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
+
+  // Rate limit: 5 fresh fetches per IP per day (skip when RATE_LIMIT_BYPASS is set)
+  let remaining = 5;
+  if (process.env.RATE_LIMIT_BYPASS !== "true") {
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim()
+      || request.headers.get("x-real-ip")
+      || "unknown";
+    const rl = await checkRateLimit(ip);
+    remaining = rl.remaining;
+
+    if (!rl.allowed) {
+      const res = NextResponse.json(
+        { error: "Daily limit reached (5 lookups per day). Try again tomorrow or revisit a previously loaded org." },
+        { status: 429 }
+      );
+      res.headers.set("X-RateLimit-Remaining", "0");
+      return res;
+    }
+  }
 
   try {
     // Step 1: Scrape page 1 to get total_number_of_repositories
@@ -109,6 +145,16 @@ export async function GET(
     const page1Json = page1Data.data.json;
     const allRepos: Repo[] = page1Json.repository_list || [];
     const totalRepos = page1Json.total_number_of_repositories || allRepos.length;
+
+    // If Firecrawl returned zero repos and zero total, the org likely doesn't exist
+    // (GitHub's 404 page has no repo data to extract)
+    if (allRepos.length === 0 && totalRepos === 0) {
+      return NextResponse.json(
+        { error: `Organization "${org}" not found on GitHub.` },
+        { status: 404 }
+      );
+    }
+
     const totalPages = Math.ceil(totalRepos / REPOS_PER_PAGE);
 
     // Step 2: If there are more pages, batch scrape them all at once
@@ -177,11 +223,14 @@ export async function GET(
       }
     }
 
-    return NextResponse.json({
-      org,
-      total: totalRepos,
-      repos: allRepos,
-    });
+    const result = { org, total: totalRepos, repos: allRepos };
+
+    // Cache the result in Redis (fire-and-forget)
+    setCached(org, result).catch(() => {});
+
+    const res = NextResponse.json(result);
+    res.headers.set("X-RateLimit-Remaining", String(remaining));
+    return res;
   } catch (error) {
     console.error("Firecrawl API error:", error);
     return NextResponse.json(

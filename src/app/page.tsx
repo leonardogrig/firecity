@@ -3,15 +3,26 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const GITHUB_ORG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+
 export default function Home() {
   const [org, setOrg] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = org.trim();
     if (!trimmed) return;
+
+    if (!GITHUB_ORG_RE.test(trimmed)) {
+      setValidationError(
+        "Invalid org name. Only letters, numbers, and hyphens allowed (no leading/trailing hyphen)."
+      );
+      return;
+    }
+    setValidationError(null);
 
     // Store the user's API key in sessionStorage so the city page can read it
     const key = apiKey.trim();
@@ -41,6 +52,11 @@ export default function Home() {
           autoFocus
         />
         <button type="submit">Build City</button>
+        {validationError && (
+          <p style={{ color: "#ff6b6b", fontSize: 13, marginTop: 8 }}>
+            {validationError}
+          </p>
+        )}
       </form>
       <div className="api-key-section">
         <input
