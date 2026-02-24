@@ -75,6 +75,36 @@ body {
   background: #6699ff;
 }
 
+/* Website URL section */
+.website-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.website-input {
+  background: #1a1a2e;
+  border: 1px solid #333;
+  color: #fff;
+  padding: 10px 16px;
+  font-family: monospace;
+  font-size: 14px;
+  border-radius: 4px;
+  outline: none;
+  width: 380px;
+  text-align: center;
+}
+
+.website-input:focus {
+  border-color: #5588ff;
+}
+
+.website-hint {
+  color: #555;
+  font-size: 11px;
+}
+
 /* API key section */
 .api-key-section {
   display: flex;
@@ -112,6 +142,7 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .city-header {
@@ -145,6 +176,96 @@ body {
 .city-stats {
   color: #666;
   font-size: 12px;
+}
+
+/* Site info panel overlay */
+.site-info-panel {
+  position: absolute;
+  top: 64px;
+  left: 16px;
+  max-width: 340px;
+  background: #0a0a1ae0;
+  backdrop-filter: blur(12px);
+  border: 1px solid #1a1a2e;
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 10;
+  font-family: monospace;
+  transition: opacity 0.3s ease;
+}
+
+.site-info-panel.loading {
+  min-height: auto;
+  color: #555;
+  font-size: 11px;
+  padding: 10px 14px;
+}
+
+.site-info-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.site-info-favicon {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.site-info-title {
+  color: #fff;
+  font-size: 13px;
+  font-weight: bold;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.site-info-url {
+  color: #555;
+  font-size: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-info-divider {
+  height: 1px;
+  background: #1a1a2e;
+  margin: 8px 0;
+}
+
+.site-info-summary {
+  color: #888;
+  font-size: 11px;
+  line-height: 1.6;
+  max-height: 120px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+}
+
+.site-info-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #555;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: monospace;
+  padding: 2px 6px;
+}
+
+.site-info-dismiss:hover {
+  color: #999;
 }
 
 .loading {

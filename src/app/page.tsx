@@ -7,6 +7,7 @@ const GITHUB_ORG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
 
 export default function Home() {
   const [org, setOrg] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const router = useRouter();
@@ -22,6 +23,18 @@ export default function Home() {
       );
       return;
     }
+
+    // Validate website URL if provided
+    const urlTrimmed = websiteUrl.trim();
+    if (urlTrimmed) {
+      try {
+        new URL(urlTrimmed);
+      } catch {
+        setValidationError("Invalid website URL. Please enter a full URL like https://example.com");
+        return;
+      }
+    }
+
     setValidationError(null);
 
     // Store the user's API key in sessionStorage so the city page can read it
@@ -30,6 +43,13 @@ export default function Home() {
       sessionStorage.setItem("firecrawl_api_key", key);
     } else {
       sessionStorage.removeItem("firecrawl_api_key");
+    }
+
+    // Store the website URL in sessionStorage
+    if (urlTrimmed) {
+      sessionStorage.setItem("website_url", urlTrimmed);
+    } else {
+      sessionStorage.removeItem("website_url");
     }
 
     router.push(`/city/${encodeURIComponent(trimmed)}`);
@@ -46,18 +66,30 @@ export default function Home() {
       <form onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder="e.g. firecrawl"
+          placeholder="e.g. mendableai"
           value={org}
           onChange={(e) => setOrg(e.target.value)}
           autoFocus
         />
         <button type="submit">Build City</button>
-        {validationError && (
-          <p style={{ color: "#ff6b6b", fontSize: 13, marginTop: 8 }}>
-            {validationError}
-          </p>
-        )}
       </form>
+      {validationError && (
+        <p style={{ color: "#ff6b6b", fontSize: 13 }}>
+          {validationError}
+        </p>
+      )}
+      <div className="website-section">
+        <input
+          type="url"
+          placeholder="Website URL (optional) e.g. https://firecrawl.dev"
+          value={websiteUrl}
+          onChange={(e) => setWebsiteUrl(e.target.value)}
+          className="website-input"
+        />
+        <span className="website-hint">
+          Adds branding colors, screenshot billboard, and site info to your city
+        </span>
+      </div>
       <div className="api-key-section">
         <input
           type="password"

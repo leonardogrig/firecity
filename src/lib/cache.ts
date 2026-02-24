@@ -78,6 +78,33 @@ export async function setCached<T>(org: string, data: T): Promise<void> {
   }
 }
 
+// ── Site scrape cache ─────────────────────────────────────────────
+
+const SITE_CACHE_PREFIX = "site:cache:";
+const SITE_CACHE_TTL = 86400 * 2; // 2 days
+
+export async function getSiteCached<T>(url: string): Promise<T | null> {
+  const r = getRedis();
+  if (!r) return null;
+  try {
+    const raw = await r.get(`${SITE_CACHE_PREFIX}${url}`);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function setSiteCached<T>(url: string, data: T): Promise<void> {
+  const r = getRedis();
+  if (!r) return;
+  try {
+    await r.set(`${SITE_CACHE_PREFIX}${url}`, JSON.stringify(data), "EX", SITE_CACHE_TTL);
+  } catch {
+    /* best-effort */
+  }
+}
+
 // ── Rate limiting ──────────────────────────────────────────────────
 
 /**

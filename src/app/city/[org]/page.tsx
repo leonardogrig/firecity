@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { City } from "@/components/City";
+import { City, SiteData } from "@/components/City";
 
 interface Repo {
   repo_name: string;
@@ -25,36 +25,59 @@ export default function CityPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const headers: Record<string, string> = {};
-        const userKey = sessionStorage.getItem("firecrawl_api_key");
-        if (userKey) {
-          headers["x-firecrawl-key"] = userKey;
-        }
+  const [siteData, setSiteData] = useState<SiteData | undefined>(undefined);
+  const [siteInfoDismissed, setSiteInfoDismissed] = useState(false);
+  const hasWebsiteUrl = useRef(false);
 
-        const res = await fetch(`/api/org/${encodeURIComponent(org)}`, { headers });
-        const json = await res.json();
-        if (!res.ok) {
-          setError(json.error || "Failed to load");
-          return;
-        }
-        setData(json);
-      } catch {
-        setError("Network error");
+  // Fetch repos AND site data in parallel — wait for both before rendering
+  useEffect(() => {
+    async function fetchAll() {
+      const headers: Record<string, string> = {};
+      const userKey = sessionStorage.getItem("firecrawl_api_key");
+      if (userKey) headers["x-firecrawl-key"] = userKey;
+
+      const websiteUrl = sessionStorage.getItem("website_url");
+      hasWebsiteUrl.current = !!websiteUrl;
+
+      const repoFetch = fetch(`/api/org/${encodeURIComponent(org)}`, { headers })
+        .then(async (res) => {
+          const json = await res.json();
+          if (!res.ok) throw new Error(json.error || "Failed to load");
+          return json as OrgData;
+        });
+
+      const siteFetch = websiteUrl
+        ? fetch("/api/scrape-site", {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ url: websiteUrl }),
+          })
+            .then(async (res) => (res.ok ? ((await res.json()) as SiteData) : null))
+            .catch(() => null)
+        : Promise.resolve(null);
+
+      try {
+        const [repoResult, siteResult] = await Promise.all([repoFetch, siteFetch]);
+        setData(repoResult);
+        if (siteResult) setSiteData(siteResult);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Network error");
       } finally {
         setLoading(false);
       }
     }
-    fetchData();
+    fetchAll();
   }, [org]);
 
   if (loading) {
     return (
       <div className="loading">
         <p>Building city for {decodeURIComponent(org)}...</p>
-        <p style={{ fontSize: 11 }}>Fetching repositories via Firecrawl</p>
+        <p style={{ fontSize: 11 }}>
+          {hasWebsiteUrl.current
+            ? "Fetching repositories & scraping website branding..."
+            : "Fetching repositories via Firecrawl"}
+        </p>
       </div>
     );
   }
@@ -81,18 +104,63 @@ export default function CityPage() {
     );
   }
 
+  const faviconUrl = siteData?.branding?.images?.favicon || siteData?.metadata?.favicon;
+  const siteTitle = siteData?.metadata?.ogTitle || siteData?.metadata?.title;
+  const siteUrl = siteData?.metadata?.sourceURL as string | undefined;
+  const brandPrimary = siteData?.branding?.colors?.primary;
+
+  const totalStars = data.repos.reduce((sum, r) => sum + r.repo_stars, 0);
+
   return (
     <div className="city-page">
       <div className="city-header">
         <div>
           <h1>{decodeURIComponent(org)}</h1>
           <span className="city-stats">
-            {data.repos.length} repos &middot; {data.total} total
+            {data.repos.length} repos &middot; {totalStars.toLocaleString()} stars
           </span>
         </div>
         <Link href="/">New city</Link>
       </div>
-      <City repos={data.repos} />
+
+      {/* Site info panel overlay */}
+      {siteData && !siteInfoDismissed && (
+        <div
+          className="site-info-panel"
+          style={{ borderLeft: brandPrimary ? `3px solid ${brandPrimary}` : undefined }}
+        >
+          <button
+            className="site-info-dismiss"
+            onClick={() => setSiteInfoDismissed(true)}
+          >
+            x
+          </button>
+
+          <div className="site-info-header">
+            {faviconUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={faviconUrl}
+                alt=""
+                className="site-info-favicon"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
+            )}
+            {siteTitle && <div className="site-info-title">{siteTitle}</div>}
+          </div>
+
+          {siteUrl && <div className="site-info-url">{siteUrl}</div>}
+
+          {siteData.summary && (
+            <>
+              <div className="site-info-divider" />
+              <div className="site-info-summary">{siteData.summary}</div>
+            </>
+          )}
+        </div>
+      )}
+
+      <City repos={data.repos} siteData={siteData} />
     </div>
   );
 }
