@@ -14,6 +14,20 @@ interface GitHubRepo {
   fork: boolean;
 }
 
+interface SiteData {
+  screenshot?: string;
+  summary?: string;
+  branding?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+interface OrgResult {
+  org: string;
+  total: number;
+  repos: Repo[];
+  siteData?: SiteData;
+}
+
 // GitHub org/user names: alphanumeric + hyphens, no leading/trailing hyphen, max 39 chars
 const GITHUB_NAME_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
 
@@ -56,6 +70,37 @@ async function fetchAllRepos(baseUrl: string): Promise<GitHubRepo[]> {
   return allRepos;
 }
 
+/**
+ * Scrape a website for branding/screenshot using Firecrawl.
+ */
+async function scrapeSite(url: string, apiKey: string): Promise<SiteData | null> {
+  try {
+    const res = await fetch("https://api.firecrawl.dev/v2/scrape", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        url,
+        formats: ["screenshot", "summary", "branding"],
+      }),
+    });
+
+    const data = await res.json();
+    if (!data.success) return null;
+
+    return {
+      screenshot: data.data?.screenshot,
+      summary: data.data?.summary,
+      branding: data.data?.branding,
+      metadata: data.data?.metadata,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ org: string }> }
@@ -69,8 +114,8 @@ export async function GET(
     );
   }
 
-  // Check Redis cache first — cache hits are free and don't count toward the limit
-  const cached = await getCached<{ org: string; total: number; repos: Repo[] }>(org);
+  // Check Redis cache first — cache hits return repos + siteData together
+  const cached = await getCached<OrgResult>(org);
   if (cached) {
     return NextResponse.json(cached);
   }
@@ -94,17 +139,23 @@ export async function GET(
     }
   }
 
+  // User-provided Firecrawl key or env key (for site scraping)
+  const userFirecrawlKey = request.headers.get("x-firecrawl-key");
+  const firecrawlKey = userFirecrawlKey || process.env.FIRECRAWL_API_KEY;
+
   try {
-    // Step 1: Try as organization first
+    // Step 1: Try as organization first — also grab the blog URL
     let reposUrl: string;
+    let blogUrl: string | null = null;
 
     const orgRes = await fetch(`https://api.github.com/orgs/${org}`, {
       headers: ghHeaders(),
     });
 
     if (orgRes.ok) {
-      // It's an organization
+      const orgData = await orgRes.json();
       reposUrl = `https://api.github.com/orgs/${org}/repos`;
+      blogUrl = orgData.blog || null;
     } else {
       // Try as user
       const userRes = await fetch(`https://api.github.com/users/${org}`, {
@@ -118,11 +169,25 @@ export async function GET(
         );
       }
 
+      const userData = await userRes.json();
       reposUrl = `https://api.github.com/users/${org}/repos`;
+      blogUrl = userData.blog || null;
     }
 
-    // Step 2: Fetch all repos with pagination
-    const ghRepos = await fetchAllRepos(reposUrl);
+    // Normalize blog URL
+    if (blogUrl && !/^https?:\/\//i.test(blogUrl)) {
+      blogUrl = `https://${blogUrl}`;
+    }
+
+    // Step 2: Fetch repos + scrape site in parallel
+    const repoPromise = fetchAllRepos(reposUrl);
+
+    const sitePromise: Promise<SiteData | null> =
+      blogUrl && firecrawlKey
+        ? scrapeSite(blogUrl, firecrawlKey)
+        : Promise.resolve(null);
+
+    const [ghRepos, siteData] = await Promise.all([repoPromise, sitePromise]);
 
     if (ghRepos.length === 0) {
       return NextResponse.json(
@@ -138,9 +203,10 @@ export async function GET(
       repo_description: r.description || "",
     }));
 
-    const result = { org, total: repos.length, repos };
+    const result: OrgResult = { org, total: repos.length, repos };
+    if (siteData) result.siteData = siteData;
 
-    // Cache the result in Redis (fire-and-forget)
+    // Cache the full result (repos + site data) in Redis
     setCached(org, result).catch(() => {});
 
     const res = NextResponse.json(result);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { City, SiteData } from "@/components/City";
@@ -15,6 +15,7 @@ interface OrgData {
   org: string;
   total: number;
   repos: Repo[];
+  siteData?: SiteData;
 }
 
 export default function CityPage() {
@@ -27,7 +28,6 @@ export default function CityPage() {
 
   const [siteData, setSiteData] = useState<SiteData | undefined>(undefined);
   const [siteInfoDismissed, setSiteInfoDismissed] = useState(false);
-  const hasWebsiteUrl = useRef(false);
 
   // Reset state when org changes so stale data never renders
   useEffect(() => {
@@ -38,40 +38,46 @@ export default function CityPage() {
     setSiteInfoDismissed(false);
   }, [org]);
 
-  // Fetch repos AND site data in parallel — wait for both before rendering
   useEffect(() => {
     async function fetchAll() {
       const userKey = sessionStorage.getItem("firecrawl_api_key");
+      const customUrl = sessionStorage.getItem(`website_url:${org}`);
 
-      const websiteUrl = sessionStorage.getItem(`website_url:${org}`);
-      hasWebsiteUrl.current = !!websiteUrl;
-
-      // Repos are fetched via GitHub API — no Firecrawl key needed
-      const repoFetch = fetch(`/api/org/${encodeURIComponent(org)}`)
-        .then(async (res) => {
-          const json = await res.json();
-          if (!res.ok) throw new Error(json.error || "Failed to load");
-          return json as OrgData;
-        });
-
-      // Site scraping still uses Firecrawl — key is sent via header
-      const siteHeaders: Record<string, string> = { "Content-Type": "application/json" };
-      if (userKey) siteHeaders["x-firecrawl-key"] = userKey;
-
-      const siteFetch = websiteUrl
-        ? fetch("/api/scrape-site", {
-            method: "POST",
-            headers: siteHeaders,
-            body: JSON.stringify({ url: websiteUrl }),
-          })
-            .then(async (res) => (res.ok ? ((await res.json()) as SiteData) : null))
-            .catch(() => null)
-        : Promise.resolve(null);
+      // Headers for the org endpoint (pass Firecrawl key so it can scrape)
+      const orgHeaders: Record<string, string> = {};
+      if (userKey) orgHeaders["x-firecrawl-key"] = userKey;
 
       try {
-        const [repoResult, siteResult] = await Promise.all([repoFetch, siteFetch]);
-        setData(repoResult);
-        if (siteResult) setSiteData(siteResult);
+        // Fetch repos + default site data (from blog) in one call
+        const orgRes = await fetch(`/api/org/${encodeURIComponent(org)}`, { headers: orgHeaders });
+        const orgJson = await orgRes.json();
+        if (!orgRes.ok) throw new Error(orgJson.error || "Failed to load");
+
+        const orgData = orgJson as OrgData;
+        setData(orgData);
+
+        // Use bundled site data by default
+        if (orgData.siteData) setSiteData(orgData.siteData);
+
+        // If user provided a custom URL, scrape that instead (overrides blog default)
+        if (customUrl) {
+          const siteHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          if (userKey) siteHeaders["x-firecrawl-key"] = userKey;
+
+          try {
+            const siteRes = await fetch("/api/scrape-site", {
+              method: "POST",
+              headers: siteHeaders,
+              body: JSON.stringify({ url: customUrl }),
+            });
+            if (siteRes.ok) {
+              const customSite = (await siteRes.json()) as SiteData;
+              setSiteData(customSite);
+            }
+          } catch {
+            // Keep the default blog site data
+          }
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Network error");
       } finally {
@@ -86,9 +92,7 @@ export default function CityPage() {
       <div className="loading">
         <p>Building city for {decodeURIComponent(org)}...</p>
         <p style={{ fontSize: 11 }}>
-          {hasWebsiteUrl.current
-            ? "Fetching repositories & scraping website branding..."
-            : "Fetching repositories from GitHub..."}
+          Fetching repositories & branding...
         </p>
       </div>
     );
