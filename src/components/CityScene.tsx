@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useMemo, useCallback, useState, useEffect } from "react";
+import React, { useRef, useMemo, useCallback, useState, useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import * as THREE from "three";
@@ -90,6 +90,11 @@ const TILE_ROWS = 4;
 const WINDOW_LIT_COLORS = ["#ffcc44", "#ffdd66", "#ffe088", "#44bbff", "#66ddff", "#88eeff"];
 const WINDOW_OFF_COLOR = "#0c0c1a";
 const FACE_COLORS = ["#1a1a2e", "#181830", "#1c1c28", "#161628", "#1e1a2a"];
+
+// ── Desaturation targets ─────────────────────────────────────
+const DESAT_COLOR = new THREE.Color("#111111");
+const DESAT_EMISSIVE_WALL = new THREE.Color("#888888");
+const DESAT_EMISSIVE_ROOF = new THREE.Color("#111111");
 
 function createWindowTile(windowsX: number, litPct: number, seed: string, brandColors?: string[]): THREE.CanvasTexture {
   const w = windowsX * WIN;
@@ -209,7 +214,7 @@ function createLabelTexture(name: string, stars: number): THREE.CanvasTexture {
 // ── Building component ──────────────────────────────────────
 function Building({
   building, index, riseProgress, hovered, onHover, onUnhover, onClick, brandColors,
-  faviconUrl, brandColor,
+  faviconUrl, brandColor, desaturated,
 }: {
   building: BuildingData;
   index: number;
@@ -221,6 +226,7 @@ function Building({
   brandColors?: string[];
   faviconUrl?: string;
   brandColor?: string;
+  desaturated?: boolean;
 }) {
   const meshRef = useRef<THREE.Mesh>(null);
   const doneRef = useRef(false);
@@ -230,6 +236,23 @@ function Building({
     [building.repo.repo_name, building.repo.repo_stars],
   );
 
+  // Capture original material properties for desaturation lerp
+  const originals = useMemo(() => materials.map((mat) => {
+    if (mat instanceof THREE.MeshStandardMaterial) {
+      return {
+        emissiveIntensity: mat.emissiveIntensity,
+        color: mat.color.clone(),
+        emissive: mat.emissive.clone(),
+        hasEmissiveMap: !!mat.emissiveMap,
+      };
+    }
+    return null;
+  }), [materials]);
+
+  const desatRef = useRef(0);
+  const labelRef = useRef<THREE.SpriteMaterial>(null);
+
+  // Rise animation
   useFrame(() => {
     if (doneRef.current) return;
     const mesh = meshRef.current;
@@ -237,7 +260,6 @@ function Building({
     const global = riseProgress.current ?? 0;
 
     if (global >= 1) {
-      // Ensure final state is applied before stopping
       mesh.scale.y = 1;
       mesh.position.y = building.height / 2;
       doneRef.current = true;
@@ -250,6 +272,52 @@ function Building({
     const h = building.height;
     mesh.scale.y = 0.001 + eased * 0.999;
     mesh.position.y = (h * mesh.scale.y) / 2;
+  });
+
+  // Desaturation animation
+  useFrame((_, delta) => {
+    const target = desaturated ? 1 : 0;
+    if (Math.abs(desatRef.current - target) < 0.002) {
+      if (desatRef.current !== target) {
+        desatRef.current = target;
+        // Apply final state
+        materials.forEach((mat, i) => {
+          if (!(mat instanceof THREE.MeshStandardMaterial) || !originals[i]) return;
+          const orig = originals[i];
+          if (target === 0) {
+            mat.emissiveIntensity = orig.emissiveIntensity;
+            mat.color.copy(orig.color);
+            mat.emissive.copy(orig.emissive);
+          } else {
+            mat.emissiveIntensity = orig.hasEmissiveMap ? 0.08 : 0.05;
+            mat.color.copy(DESAT_COLOR);
+            mat.emissive.copy(orig.hasEmissiveMap ? DESAT_EMISSIVE_WALL : DESAT_EMISSIVE_ROOF);
+          }
+        });
+        if (labelRef.current) {
+          labelRef.current.opacity = target === 0 ? (hovered ? 1 : 0.6) : 0.15;
+        }
+      }
+      return;
+    }
+
+    desatRef.current += (target - desatRef.current) * Math.min(1, delta * 6);
+    const t = desatRef.current;
+
+    materials.forEach((mat, i) => {
+      if (!(mat instanceof THREE.MeshStandardMaterial) || !originals[i]) return;
+      const orig = originals[i];
+      const targetIntensity = orig.hasEmissiveMap ? 0.08 : 0.05;
+      mat.emissiveIntensity = THREE.MathUtils.lerp(orig.emissiveIntensity, targetIntensity, t);
+      mat.color.copy(orig.color).lerp(DESAT_COLOR, t);
+      const emissiveTarget = orig.hasEmissiveMap ? DESAT_EMISSIVE_WALL : DESAT_EMISSIVE_ROOF;
+      mat.emissive.copy(orig.emissive).lerp(emissiveTarget, t);
+    });
+
+    if (labelRef.current) {
+      const baseOpacity = hovered ? 1 : 0.6;
+      labelRef.current.opacity = THREE.MathUtils.lerp(baseOpacity, 0.15, t);
+    }
   });
 
   return (
@@ -281,6 +349,7 @@ function Building({
         renderOrder={10}
       >
         <spriteMaterial
+          ref={labelRef}
           map={labelTexture}
           transparent
           depthTest={false}
@@ -897,11 +966,21 @@ function StreetLamps({ buildings }: { buildings: BuildingData[] }) {
 }
 
 // ── Main scene ──────────────────────────────────────────────
-export function CityScene({ repos, siteData }: { repos: Repo[]; siteData?: SiteData }) {
+export function CityScene({ repos, siteData, deselectRef }: {
+  repos: Repo[];
+  siteData?: SiteData;
+  deselectRef?: React.MutableRefObject<(() => void) | null>;
+}) {
   const buildings = useMemo(() => layoutCity(repos), [repos]);
   const [hoveredName, setHoveredName] = useState<string | null>(null);
   const [activeName, setActiveName] = useState<string | null>(null);
   const riseProgress = useRef(0);
+
+  // Expose deselect callback for Canvas onPointerMissed
+  useEffect(() => {
+    if (deselectRef) deselectRef.current = () => setActiveName(null);
+    return () => { if (deselectRef) deselectRef.current = null; };
+  }, [deselectRef]);
 
   useFrame((_, delta) => {
     if (riseProgress.current < 1) {
@@ -975,6 +1054,7 @@ export function CityScene({ repos, siteData }: { repos: Repo[]; siteData?: SiteD
             brandColors={brandColors}
             faviconUrl={isActive ? faviconUrl : undefined}
             brandColor={isActive ? brandPrimary : undefined}
+            desaturated={!!activeName && !isActive}
           />
         );
       })}

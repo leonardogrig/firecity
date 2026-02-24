@@ -60,7 +60,23 @@ body {
   border-color: #5588ff;
 }
 
-.landing button {
+.landing button.btn-next {
+  background: #2a2a3e;
+  color: #5588ff;
+  border: 1px solid #333;
+  padding: 12px 24px;
+  font-family: monospace;
+  font-size: 16px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.landing button.btn-next:hover {
+  background: #333350;
+  border-color: #5588ff;
+}
+
+.landing button.btn-build {
   background: #5588ff;
   color: #fff;
   border: none;
@@ -71,7 +87,7 @@ body {
   cursor: pointer;
 }
 
-.landing button:hover {
+.landing button.btn-build:hover {
   background: #6699ff;
 }
 
@@ -105,6 +121,12 @@ body {
   font-size: 11px;
 }
 
+.blog-suggestion-hint {
+  color: #5588ff;
+  font-size: 12px;
+  font-family: monospace;
+}
+
 /* API key section */
 .api-key-section {
   display: flex;
@@ -112,6 +134,12 @@ body {
   align-items: center;
   gap: 6px;
   margin-top: 4px;
+}
+
+.api-key-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 
 .api-key-input {
@@ -132,9 +160,28 @@ body {
   color: #ccc;
 }
 
+.confirm-key-btn {
+  background: #2a2a3e;
+  color: #5588ff;
+  border: 1px solid #333;
+  padding: 7px 14px;
+  font-family: monospace;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.confirm-key-btn:hover {
+  background: #333350;
+  border-color: #5588ff;
+}
+
 .api-key-hint {
-  color: #444;
+  color: #555;
   font-size: 11px;
+  max-width: 400px;
+  text-align: center;
 }
 
 /* City page */
@@ -164,7 +211,7 @@ body {
 }
 
 .city-header a {
-  color: #5588ff;
+  color: #fff;
   text-decoration: none;
   font-size: 14px;
 }

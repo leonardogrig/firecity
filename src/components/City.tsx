@@ -2,7 +2,7 @@
 
 import { Canvas } from "@react-three/fiber";
 import { CityScene } from "./CityScene";
-import { Suspense } from "react";
+import { Suspense, useRef } from "react";
 
 interface Repo {
   repo_name: string;
@@ -40,15 +40,18 @@ export interface SiteData {
 }
 
 export function City({ repos, siteData }: { repos: Repo[]; siteData?: SiteData }) {
+  const deselectRef = useRef<(() => void) | null>(null);
+
   return (
     <div style={{ width: "100%", height: "100%", flex: 1, position: "relative" }}>
       <Canvas
         camera={{ fov: 55, near: 1, far: 4000, position: [300, 350, 500] }}
         gl={{ antialias: true, powerPreference: "high-performance" }}
         style={{ position: "absolute", inset: 0 }}
+        onPointerMissed={() => deselectRef.current?.()}
       >
         <Suspense fallback={null}>
-          <CityScene repos={repos} siteData={siteData} />
+          <CityScene repos={repos} siteData={siteData} deselectRef={deselectRef} />
         </Suspense>
       </Canvas>
     </div>

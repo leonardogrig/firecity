@@ -32,24 +32,27 @@ export default function CityPage() {
   // Fetch repos AND site data in parallel — wait for both before rendering
   useEffect(() => {
     async function fetchAll() {
-      const headers: Record<string, string> = {};
       const userKey = sessionStorage.getItem("firecrawl_api_key");
-      if (userKey) headers["x-firecrawl-key"] = userKey;
 
       const websiteUrl = sessionStorage.getItem("website_url");
       hasWebsiteUrl.current = !!websiteUrl;
 
-      const repoFetch = fetch(`/api/org/${encodeURIComponent(org)}`, { headers })
+      // Repos are fetched via GitHub API — no Firecrawl key needed
+      const repoFetch = fetch(`/api/org/${encodeURIComponent(org)}`)
         .then(async (res) => {
           const json = await res.json();
           if (!res.ok) throw new Error(json.error || "Failed to load");
           return json as OrgData;
         });
 
+      // Site scraping still uses Firecrawl — key is sent via header
+      const siteHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (userKey) siteHeaders["x-firecrawl-key"] = userKey;
+
       const siteFetch = websiteUrl
         ? fetch("/api/scrape-site", {
             method: "POST",
-            headers: { ...headers, "Content-Type": "application/json" },
+            headers: siteHeaders,
             body: JSON.stringify({ url: websiteUrl }),
           })
             .then(async (res) => (res.ok ? ((await res.json()) as SiteData) : null))
@@ -76,7 +79,7 @@ export default function CityPage() {
         <p style={{ fontSize: 11 }}>
           {hasWebsiteUrl.current
             ? "Fetching repositories & scraping website branding..."
-            : "Fetching repositories via Firecrawl"}
+            : "Fetching repositories from GitHub..."}
         </p>
       </div>
     );

@@ -7,64 +7,54 @@ interface Repo {
   repo_description: string;
 }
 
-interface FirecrawlJsonResult {
-  repository_list: Repo[];
-  total_number_of_repositories: number;
+interface GitHubRepo {
+  name: string;
+  stargazers_count: number;
+  description: string | null;
+  fork: boolean;
 }
 
-interface FirecrawlScrapeResponse {
-  success: boolean;
-  data?: {
-    json?: FirecrawlJsonResult;
+// GitHub org/user names: alphanumeric + hyphens, no leading/trailing hyphen, max 39 chars
+const GITHUB_NAME_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
+
+function ghHeaders(): Record<string, string> {
+  const h: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "firecity-app",
   };
-  error?: string;
+  if (process.env.GITHUB_TOKEN) {
+    h.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+  return h;
 }
 
-interface FirecrawlBatchStartResponse {
-  success: boolean;
-  id: string;
-  url: string;
+/**
+ * Fetch all repos for an org or user, handling pagination (100 per page).
+ */
+async function fetchAllRepos(baseUrl: string): Promise<GitHubRepo[]> {
+  const allRepos: GitHubRepo[] = [];
+  let page = 1;
+
+  while (true) {
+    const res = await fetch(
+      `${baseUrl}?per_page=100&sort=stars&direction=desc&page=${page}`,
+      { headers: ghHeaders() }
+    );
+
+    if (!res.ok) break;
+
+    const repos: GitHubRepo[] = await res.json();
+    if (repos.length === 0) break;
+
+    allRepos.push(...repos);
+
+    // If we got fewer than 100, there are no more pages
+    if (repos.length < 100) break;
+    page++;
+  }
+
+  return allRepos;
 }
-
-interface FirecrawlBatchStatusResponse {
-  status: "scraping" | "completed" | "failed";
-  total: number;
-  completed: number;
-  data?: Array<{
-    json?: FirecrawlJsonResult;
-  }>;
-}
-
-const REPOS_PER_PAGE = 30; // GitHub shows 30 repos per org page
-
-// GitHub org names: alphanumeric + hyphens, no leading/trailing hyphen, max 39 chars
-const GITHUB_ORG_RE = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$/;
-
-const SCRAPE_FORMATS = [
-  {
-    type: "json" as const,
-    schema: {
-      type: "object",
-      required: [],
-      properties: {
-        repository_list: {
-          type: "array",
-          items: {
-            type: "object",
-            required: [],
-            properties: {
-              repo_name: { type: "string" },
-              repo_stars: { type: "number" },
-              repo_description: { type: "string" },
-            },
-          },
-        },
-        total_number_of_repositories: { type: "number" },
-      },
-    },
-    prompt: "Extract all the repositories and information",
-  },
-];
 
 export async function GET(
   request: NextRequest,
@@ -72,28 +62,12 @@ export async function GET(
 ) {
   const { org } = await params;
 
-  if (!GITHUB_ORG_RE.test(org)) {
+  if (!GITHUB_NAME_RE.test(org)) {
     return NextResponse.json(
-      { error: "Invalid organization name. GitHub names can only contain letters, numbers, and hyphens." },
+      { error: "Invalid name. GitHub names can only contain letters, numbers, and hyphens." },
       { status: 400 }
     );
   }
-
-  // User-provided key (via header) takes priority over the env key
-  const userKey = request.headers.get("x-firecrawl-key");
-  const apiKey = userKey || process.env.FIRECRAWL_API_KEY;
-
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "No Firecrawl API key provided. Enter one on the home page or set FIRECRAWL_API_KEY in .env.local" },
-      { status: 400 }
-    );
-  }
-
-  const headers = {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-  };
 
   // Check Redis cache first — cache hits are free and don't count toward the limit
   const cached = await getCached<{ org: string; total: number; repos: Repo[] }>(org);
@@ -121,109 +95,50 @@ export async function GET(
   }
 
   try {
-    // Step 1: Scrape page 1 to get total_number_of_repositories
-    const page1Res = await fetch("https://api.firecrawl.dev/v2/scrape", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        url: `https://github.com/orgs/${org}/repositories?page=1`,
-        onlyMainContent: false,
-        maxAge: 172800000,
-        formats: SCRAPE_FORMATS,
-      }),
+    // Step 1: Try as organization first
+    let reposUrl: string;
+
+    const orgRes = await fetch(`https://api.github.com/orgs/${org}`, {
+      headers: ghHeaders(),
     });
 
-    const page1Data: FirecrawlScrapeResponse = await page1Res.json();
+    if (orgRes.ok) {
+      // It's an organization
+      reposUrl = `https://api.github.com/orgs/${org}/repos`;
+    } else {
+      // Try as user
+      const userRes = await fetch(`https://api.github.com/users/${org}`, {
+        headers: ghHeaders(),
+      });
 
-    if (!page1Data.success || !page1Data.data?.json) {
-      return NextResponse.json(
-        { error: page1Data.error || "Failed to fetch organization data" },
-        { status: 400 }
-      );
+      if (!userRes.ok) {
+        return NextResponse.json(
+          { error: `"${org}" not found on GitHub as an organization or user.` },
+          { status: 404 }
+        );
+      }
+
+      reposUrl = `https://api.github.com/users/${org}/repos`;
     }
 
-    const page1Json = page1Data.data.json;
-    const allRepos: Repo[] = page1Json.repository_list || [];
-    const totalRepos = page1Json.total_number_of_repositories || allRepos.length;
+    // Step 2: Fetch all repos with pagination
+    const ghRepos = await fetchAllRepos(reposUrl);
 
-    // If Firecrawl returned zero repos and zero total, the org likely doesn't exist
-    // (GitHub's 404 page has no repo data to extract)
-    if (allRepos.length === 0 && totalRepos === 0) {
+    if (ghRepos.length === 0) {
       return NextResponse.json(
-        { error: `Organization "${org}" not found on GitHub.` },
+        { error: `No public repositories found for "${org}".` },
         { status: 404 }
       );
     }
 
-    const totalPages = Math.ceil(totalRepos / REPOS_PER_PAGE);
+    // Step 3: Map to our format
+    const repos: Repo[] = ghRepos.map((r) => ({
+      repo_name: r.name,
+      repo_stars: r.stargazers_count,
+      repo_description: r.description || "",
+    }));
 
-    // Step 2: If there are more pages, batch scrape them all at once
-    if (totalPages > 1) {
-      const remainingUrls: string[] = [];
-      for (let page = 2; page <= totalPages; page++) {
-        remainingUrls.push(
-          `https://github.com/orgs/${org}/repositories?page=${page}`
-        );
-      }
-
-      // Start batch scrape
-      const batchStartRes = await fetch(
-        "https://api.firecrawl.dev/v2/batch/scrape",
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            urls: remainingUrls,
-            formats: SCRAPE_FORMATS,
-            onlyMainContent: false,
-            maxAge: 172800000,
-          }),
-        }
-      );
-
-      const batchStart: FirecrawlBatchStartResponse =
-        await batchStartRes.json();
-
-      if (!batchStart.success || !batchStart.id) {
-        // Batch failed — return what we have from page 1
-        return NextResponse.json({
-          org,
-          total: totalRepos,
-          repos: allRepos,
-        });
-      }
-
-      // Step 3: Poll for batch completion
-      const batchUrl = `https://api.firecrawl.dev/v2/batch/scrape/${batchStart.id}`;
-      const maxAttempts = 30; // up to ~60 seconds
-      let attempt = 0;
-
-      while (attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 2000));
-        attempt++;
-
-        const statusRes = await fetch(batchUrl, { headers });
-        const status: FirecrawlBatchStatusResponse = await statusRes.json();
-
-        if (status.status === "completed") {
-          // Collect repos from all batch results
-          if (status.data) {
-            for (const item of status.data) {
-              if (item.json?.repository_list) {
-                allRepos.push(...item.json.repository_list);
-              }
-            }
-          }
-          break;
-        }
-
-        if (status.status === "failed") {
-          break; // Return what we have from page 1
-        }
-      }
-    }
-
-    const result = { org, total: totalRepos, repos: allRepos };
+    const result = { org, total: repos.length, repos };
 
     // Cache the result in Redis (fire-and-forget)
     setCached(org, result).catch(() => {});
@@ -232,9 +147,9 @@ export async function GET(
     res.headers.set("X-RateLimit-Remaining", String(remaining));
     return res;
   } catch (error) {
-    console.error("Firecrawl API error:", error);
+    console.error("GitHub API error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch data from Firecrawl" },
+      { error: "Failed to fetch data from GitHub" },
       { status: 500 }
     );
   }

@@ -15,7 +15,7 @@ function getRedis(): Redis | null {
   try {
     redis = new Redis(url, { maxRetriesPerRequest: 1, connectTimeout: 5000 });
     redis.on("error", () => {
-      /* swallow – we fall through to Firecrawl on failure */
+      /* swallow – we fall through to GitHub API on failure */
     });
     return redis;
   } catch {
