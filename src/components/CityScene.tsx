@@ -213,13 +213,14 @@ function createLabelTexture(name: string, stars: number): THREE.CanvasTexture {
 
 // ── Building component ──────────────────────────────────────
 function Building({
-  building, index, riseProgress, hovered, onHover, onUnhover, onClick, brandColors,
+  building, index, riseProgress, hovered, active, onHover, onUnhover, onClick, brandColors,
   faviconUrl, brandColor, desaturated,
 }: {
   building: BuildingData;
   index: number;
   riseProgress: React.RefObject<number>;
   hovered: boolean;
+  active: boolean;
   onHover: () => void;
   onUnhover: () => void;
   onClick: () => void;
@@ -358,8 +359,8 @@ function Building({
         />
       </sprite>
 
-      {/* Hover tooltip — single Html instance, only when hovered */}
-      {hovered && building.repo.repo_description && (
+      {/* Tooltip — visible on hover or when building is selected */}
+      {(hovered || active) && building.repo.repo_description && (
         <Html
           position={[building.x, building.height + (faviconUrl ? 34 : 20), building.z]}
           center
@@ -1048,6 +1049,7 @@ export function CityScene({ repos, siteData, deselectRef }: {
             index={i}
             riseProgress={riseProgress}
             hovered={isHovered}
+            active={isActive}
             onHover={() => handleHover(b.repo.repo_name)}
             onUnhover={handleUnhover}
             onClick={() => handleClick(b.repo.repo_name)}

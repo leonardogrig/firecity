@@ -23,6 +23,29 @@ body {
   justify-content: center;
   min-height: 100vh;
   gap: 24px;
+  position: relative;
+}
+
+.github-star {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  color: #555;
+  transition: color 0.2s;
+}
+
+.github-star:hover {
+  color: #fff;
+}
+
+.github-star-inline {
+  color: #555;
+  transition: color 0.2s;
+  display: flex;
+}
+
+.github-star-inline:hover {
+  color: #fff;
 }
 
 .landing h1 {
@@ -58,6 +81,40 @@ body {
 
 .landing input:focus {
   border-color: #5588ff;
+}
+
+.org-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: #1a1a2e;
+  border: 1px solid #333;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.org-input-wrapper:focus-within {
+  border-color: #5588ff;
+}
+
+.org-input-prefix {
+  color: #555;
+  font-family: monospace;
+  font-size: 16px;
+  padding: 12px 0 12px 14px;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.org-input {
+  background: transparent;
+  border: none !important;
+  color: #fff;
+  padding: 12px 14px 12px 2px;
+  font-family: monospace;
+  font-size: 16px;
+  outline: none !important;
+  width: 180px;
+  box-shadow: none !important;
 }
 
 .landing button.btn-next {
@@ -125,6 +182,34 @@ body {
   color: #5588ff;
   font-size: 12px;
   font-family: monospace;
+}
+
+.blog-confirm-link {
+  background: none;
+  border: none;
+  color: #fff;
+  font-family: monospace;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.blog-confirm-link:hover {
+  color: #5588ff;
+}
+
+.powered-by {
+  position: absolute;
+  bottom: 24px;
+  color: #444;
+  font-size: 11px;
+  font-family: monospace;
+  text-decoration: none;
+}
+
+.powered-by:hover {
+  color: #666;
 }
 
 /* API key section */
@@ -208,6 +293,12 @@ body {
 .city-header h1 {
   font-size: 20px;
   color: #fff;
+}
+
+.city-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
 .city-header a {

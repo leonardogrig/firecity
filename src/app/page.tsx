@@ -23,6 +23,7 @@ export default function Home() {
   // Blog suggestion state
   const [searching, setSearching] = useState(false);
   const [blogSuggested, setBlogSuggested] = useState(false);
+  const [blogConfirmed, setBlogConfirmed] = useState(false);
 
   const router = useRouter();
 
@@ -36,9 +37,10 @@ export default function Home() {
 
   const hasFirecrawlAccess = envHasKey || apiKeyConfirmed;
 
-  // Button says "Build City" if user has a URL, or if no Firecrawl access (go straight).
-  // Otherwise says "Next" to trigger the blog lookup.
-  const readyToBuild = !hasFirecrawlAccess || websiteUrl.trim() || blogSuggested;
+  // Blog suggested but user hasn't clicked Yes/No yet — block the button
+  const pendingBlogConfirm = blogSuggested && !blogConfirmed;
+  // Button says "Build City" when ready, "Next" to trigger the blog lookup
+  const readyToBuild = !pendingBlogConfirm && (!hasFirecrawlAccess || websiteUrl.trim() || blogSuggested);
   const buttonText = readyToBuild ? "Build City" : "Next";
 
   function handleConfirmKey() {
@@ -57,9 +59,7 @@ export default function Home() {
 
     const url = normalizeUrl(websiteUrl);
     if (url) {
-      sessionStorage.setItem("website_url", url);
-    } else {
-      sessionStorage.removeItem("website_url");
+      sessionStorage.setItem(`website_url:${trimmedOrg}`, url);
     }
 
     router.push(`/city/${encodeURIComponent(trimmedOrg)}`);
@@ -132,29 +132,44 @@ export default function Home() {
     setOrg(value);
     if (blogSuggested) {
       setBlogSuggested(false);
+      setBlogConfirmed(false);
       setWebsiteUrl("");
     }
   }
 
   return (
     <div className="landing">
+      <a
+        href="https://github.com/leonardogrig/firecity"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="github-star"
+        aria-label="Star on GitHub"
+      >
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z" />
+        </svg>
+      </a>
       <h1>FIRECITY</h1>
       <p>
         Enter a GitHub organization or username to generate a city skyline.
-        Each building represents a repository. The number of floors
-        corresponds to the number of stars.
+        Each building represents a repository.
       </p>
       <form onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder="e.g. firecrawl"
-          value={org}
-          onChange={(e) => handleOrgChange(e.target.value)}
-          autoFocus
-        />
+        <div className="org-input-wrapper">
+          <span className="org-input-prefix">github.com/</span>
+          <input
+            type="text"
+            placeholder="firecrawl"
+            value={org}
+            onChange={(e) => handleOrgChange(e.target.value)}
+            autoFocus
+            className="org-input"
+          />
+        </div>
         <button
           type="submit"
-          disabled={searching}
+          disabled={searching || pendingBlogConfirm}
           className={readyToBuild ? "btn-build" : "btn-next"}
         >
           {searching ? "Searching..." : buttonText}
@@ -166,44 +181,65 @@ export default function Home() {
         </p>
       )}
 
-      {/* Firecrawl API key section */}
-      <div className="api-key-section">
-        <div className="api-key-row">
-          <input
-            type="password"
-            placeholder="Firecrawl API key (optional)"
-            value={apiKey}
-            onChange={(e) => {
-              setApiKey(e.target.value);
-              if (apiKeyConfirmed) setApiKeyConfirmed(false);
-            }}
-            className="api-key-input"
-          />
-          {!envHasKey && apiKey.trim() && !apiKeyConfirmed && (
-            <button
-              type="button"
-              onClick={handleConfirmKey}
-              className="confirm-key-btn"
-            >
-              Confirm
-            </button>
-          )}
-        </div>
-        <span className="api-key-hint">
-          {envHasKey
-            ? "Server key detected. You can override it or leave blank."
-            : apiKeyConfirmed
+      {/* Firecrawl API key section — hidden when server key is configured */}
+      {!envHasKey && (
+        <div className="api-key-section">
+          <div className="api-key-row">
+            <input
+              type="password"
+              placeholder="Firecrawl API key (optional)"
+              value={apiKey}
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                if (apiKeyConfirmed) setApiKeyConfirmed(false);
+              }}
+              className="api-key-input"
+            />
+            {apiKey.trim() && !apiKeyConfirmed && (
+              <button
+                type="button"
+                onClick={handleConfirmKey}
+                className="confirm-key-btn"
+              >
+                Confirm
+              </button>
+            )}
+          </div>
+          <span className="api-key-hint">
+            {apiKeyConfirmed
               ? "Key confirmed. You can now add a website URL for branding."
               : "Add a Firecrawl key to enable website branding & screenshots. Get yours at firecrawl.dev"
-          }
-        </span>
-      </div>
+            }
+          </span>
+        </div>
+      )}
 
       {/* Website URL section — only visible with Firecrawl access */}
       {hasFirecrawlAccess && (
         <div className="website-section">
-          {blogSuggested && websiteUrl && (
-            <span className="blog-suggestion-hint">Is this your website?</span>
+          {blogSuggested && !blogConfirmed && websiteUrl && (
+            <span className="blog-suggestion-hint">
+              Is this your website?{" "}
+              <button
+                type="button"
+                className="blog-confirm-link"
+                onClick={() => setBlogConfirmed(true)}
+              >
+                Yes
+              </button>
+              {" / "}
+              <button
+                type="button"
+                className="blog-confirm-link"
+                onClick={() => {
+                  setWebsiteUrl("");
+                  setBlogSuggested(false);
+                  setBlogConfirmed(true);
+                }}
+              >
+                No
+              </button>
+            </span>
           )}
           <input
             type="url"
@@ -220,6 +256,15 @@ export default function Home() {
           </span>
         </div>
       )}
+
+      <a
+        href="https://firecrawl.dev"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="powered-by"
+      >
+        powered by firecrawl
+      </a>
     </div>
   );
 }
